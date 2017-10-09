@@ -90,6 +90,8 @@ backPropogate :: (Num a) => TrainingConfig a             -- config
 backPropogate config t@(xs, ds) dw nn = undefined
   where induced_net = induce_net (act_func config) nn xs
   
+
+
 backPropLayers :: (Num a) => TrainingConfig a                -- config
                           -> [a]                             -- desired output of output layer 
                           -> WeightChange a                  -- past iterations weight changes
@@ -97,20 +99,14 @@ backPropLayers :: (Num a) => TrainingConfig a                -- config
                           -> [[a]]                           -- previous layers weights 
                           -> NeuralNet a                     -- the induced net to evaluate
                           -> (NeuralNet a, WeightChange a)   -- updated net and weight deltas
-backPropLayers config ds (WeightChange dw) pg plw nn@(InducedNN layers output) = 
-  case last layers of
-    layer@(Hidden ns) -> (result_nn, result_dw)
-      where result_nn = NN (remaining_layers ++ [Hidden layer_ns])
-            result_dw = WeightChange (remaining_dws ++ [layer_dws])
-            (NN remaining_layers, WeightChange remaining_dws) = backPropLayers config ds (WeightChange (init dw)) layer_gs (layer_weights layer) (InducedNN (init layers) output)
-            (layer_ns, layer_dws, layer_gs) = hidden_layer_step config (last dw) pg plw ((last . init) layers) layer            
-    layer@(Output ns) -> (result_nn, result_dw)
-      where result_nn = NN (remaining_layers ++ [Output layer_ns])
-            result_dw = WeightChange (remaining_dws ++ [layer_dws])
-            (NN remaining_layers, WeightChange remaining_dws) = backPropLayers config ds (WeightChange (init dw)) layer_gs (layer_weights layer) (InducedNN (init layers) output)
-            (layer_ns, layer_dws, layer_gs) = output_layer_step config (last dw) ds output ((last . init) layers) layer --output_layer_step 
-           
-            
+backPropLayers config ds (WeightChange dw) pg plw nn@(InducedNN layers output) = (result_nn, result_dw)
+  where result_nn = NN (remaining_layers ++ [layer_type layer_ns])
+        result_dw = WeightChange (remaining_dws ++ [layer_dws])
+        (NN remaining_layers, WeightChange remaining_dws) = backPropLayers config ds (WeightChange (init dw)) layer_gs (layer_weights layer) (InducedNN (init layers) output)
+        (layer_type, (layer_ns, layer_dws, layer_gs)) = case layer of 
+          (Hidden ns) -> (Hidden, hidden_layer_step config (last dw) pg plw ((last . init) layers) layer)
+          (Output ns) -> (Output, output_layer_step config (last dw) ds output ((last . init) layers) layer )
+        layer = last layers
 
 hidden_layer_step :: (Num a) => TrainingConfig a
                              -> [[a]]                   -- last weight updates (for momentum)
