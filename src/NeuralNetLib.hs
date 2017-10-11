@@ -8,21 +8,15 @@ data NeuralNet a = NN {
                       net :: [Layer (Neuron a)] }
                  | InducedNN {
                       net :: [Layer (Neuron a)],
-                      output :: [a] } 
+                      output :: [a] } deriving (Show)
 
 
-data Layer a = Output {
+data Layer a = Layer {
                 nodes :: [a]
-             }
-             | Hidden {
-                nodes :: [a]
-             }
-             deriving (Eq, Show)
+             } deriving (Eq, Show)
 
 instance Functor Layer where 
-  fmap f (Output xs) = Output (map f xs)
-  fmap f (Hidden xs) = Hidden (map f xs)
-                      
+  fmap f (Layer xs) = Layer (map f xs)
 
 ----------------------------------------------------------------
 ---------------Views for NeuralNet Datatype---------------------
@@ -35,7 +29,7 @@ instance Functor Layer where
 induce_net :: (Num a) => ActivationFunction a -> NeuralNet a -> [a] -> (NeuralNet a)
 induce_net af nn input = InducedNN in_net o 
   where layers = net nn 
-        first_layer_induced = fmap (induce input) (head layers)
+        first_layer_induced = fmap (induce (1 : input)) (head layers)
         in_net = foldl (induce_layer af) [first_layer_induced] (tail layers)
         phi    = activation af
         o      = map phi (layer_ilf (last in_net))
@@ -64,8 +58,13 @@ induce_layer af induced current_layer = induced ++ [induced_current_layer]
         layer_input = map phi (layer_ilf previous_layer)
         induced_current_layer = fmap (induce layer_input) current_layer
         
-
-       
+induce_net' :: (Num a) => ActivationFunction a -> NeuralNet a -> [a] -> (NeuralNet a)
+induce_net' af (NN (l:ls)) xs = InducedNN (l':ls') o
+  where ys  = layer_outputs af l'
+        l'  = Layer $ map (induce (1:xs)) (nodes l)
+        (InducedNN ls' o) = induce_net' af (NN ls) ys 
+induce_net' af (NN []) xs     = InducedNN [] xs
+induce_net' _ _ _             = error "dont induce an induced net"
 
 ----------------------------------------------------------------
 ---------------------- Back Propogation ------------------------
@@ -80,53 +79,74 @@ data TrainingConfig a = TrainingConfig {
 trainingConfig :: (Num a) => ActivationFunction a -> a -> a -> TrainingConfig a 
 trainingConfig af a b = TrainingConfig af a b
 
-newtype WeightChange a = WeightChange [[[a]]]
+newtype WeightChange a = WeightChange [[[a]]] deriving (Eq, Show)
+
 
 backPropogate :: (Num a) => TrainingConfig a             -- config
                          -> ([a], [a])                   -- training_data@(input, desired outputs)
                          -> WeightChange a               -- last set of weight updates
                          -> NeuralNet a                  -- net to backprop
                          -> (NeuralNet a, WeightChange a)  -- updated net
-backPropogate config t@(xs, ds) dw nn = undefined
-  where induced_net = induce_net (act_func config) nn xs
-  
+                                                  
+backPropogate config (xs, ds) dw nn = (NN (reverse ls), dws)
+  where (InducedNN nss o) = induce_net (act_func config) nn xs
+        reversed_net = InducedNN (reverse nss) o
+        (NN ls, dws) = backPropLayers config ((1:xs),ds) dw [] [] reversed_net
 
 
 backPropLayers :: (Num a) => TrainingConfig a                -- config
-                          -> [a]                             -- desired output of output layer 
+                          -> ([a],[a])                       -- training_data@(input, desired_output)
                           -> WeightChange a                  -- past iterations weight changes
                           -> [a]                             -- previous layers gradients
-                          -> [[a]]                           -- previous layers weights 
+                          -> [[a]]                           -- previous layers weights in transpose form(outgoing from current layer)
                           -> NeuralNet a                     -- the induced net to evaluate
                           -> (NeuralNet a, WeightChange a)   -- updated net and weight deltas
-backPropLayers config ds (WeightChange dw) pg plw nn@(InducedNN layers output) = (result_nn, result_dw)
-  where result_nn = NN (remaining_layers ++ [layer_type layer_ns])
-        result_dw = WeightChange (remaining_dws ++ [layer_dws])
-        (NN remaining_layers, WeightChange remaining_dws) = backPropLayers config ds (WeightChange (init dw)) layer_gs (layer_weights layer) (InducedNN (init layers) output)
-        (layer_type, (layer_ns, layer_dws, layer_gs)) = case layer of 
-          (Hidden ns) -> (Hidden, hidden_layer_step config (last dw) pg plw ((last . init) layers) layer)
-          (Output ns) -> (Output, output_layer_step config (last dw) ds output ((last . init) layers) layer )
-        layer = last layers
+backPropLayers config _ dw _ _ (InducedNN [] output) = (NN [], WeightChange [])
+backPropLayers config t@(xs ,ds) dw pg plw (InducedNN (l:ls) output) = (resultNet, resultDeltaW)
+  where resultNet    = NN (l':ls') 
+        resultDeltaW = WeightChange (dw':dwss')
+        ((NN ls'),(WeightChange dwss')) = backPropLayers config t (WeightChange dwsss_old) gradients ws nn' -- next recursion
+                         where ws  = transpose $ layer_weights l
+                               nn' = InducedNN (ls) output
+        l'           = update_layer_weights dw' l 
+        dw'          = layer_weight_deltas config dwss_old gradients ys
+                         where ys = case ls of 
+                                      [] -> xs 
+                                      _  -> layer_outputs (act_func config) (head ls)
+        gradients    = let errs = case (pg, plw) of 
+                                    ([],[]) -> zipWith (-) ds output
+                                    _       -> hidden_layer_errors pg plw
+                       in layer_gradients (act_func config) l errs      
+        (dwss_old:dwsss_old) = case dw of 
+                                 WeightChange [] -> repeat $ repeat $ repeat 0
+                                 WeightChange xs -> xs
+{-                                 
+backPropLayers _ _ _ [] [] (InducedNN (l:ls) output) = error "empty prev weight"   
+backPropLayers config t dw pg plw (InducedNN (l:l_nxt:ls) output) = (resultNet, resultDeltaW)      
+-}
+  
+update_layer_weights :: (Num a) => [[a]] -> Layer (Neuron a) -> Layer (Neuron a)
+update_layer_weights wdss l = if (length wdss) == (layer_size l)
+                              then Layer $ map Neuron $ zipWith (zipWith (+)) wss wdss
+                              else error "layer and update sizes do not match"
+  where wss = layer_weights l
+        
+layer_weight_deltas :: (Num a) => TrainingConfig a -> [[a]] -> [a] -> [a] -> [[a]]
+layer_weight_deltas (TrainingConfig _ a b) dwss_old gradients ys = zipWith (zipWith (+)) momentums descents
+  where momentums = map (map (* b)) dwss_old
+        descents  = map (\g -> map (g *) ys) (map (* a) gradients)
+        
+layer_gradients :: (Num a) => ActivationFunction a -> Layer (Neuron a) -> [a] -> [a]
+layer_gradients af l errs = zipWith (*) (map phi' ilfs) errs
+  where phi' = derivitive af 
+        ilfs = map (local_field) (nodes l)
+        
 
-hidden_layer_step :: (Num a) => TrainingConfig a
-                             -> [[a]]                   -- last weight updates (for momentum)
-                             -> [a]                     -- forward layer gradients
-                             -> [[a]]                   -- forward weights from current
-                             -> Layer (Neuron a)        -- backward from current
-                             -> Layer (Neuron a)        -- layer to compute
-                             -> ([Neuron a], [[a]], [a]) 
-hidden_layer_step config dws_old flgs plw (Hidden prev_n) (Hidden ns) = (ns', dws', grads') 
-  where ns'      = map (\(n,delta_ws)-> Neuron (zipWith (+) (weights n) (delta_ws))) zipped_ns 
-          where zipped_ns = zip ns dws'
-        dws'     = map (\(neuron, gradient, dnw_old) -> map (\(w, yi, dwij) -> (b * dwij) + (a * gradient * yi)) (zip3 (weights neuron) prev_ys dnw_old)  ) zipped_ns
-          where b         = beta config 
-                a         = alpha config
-                zipped_ns = zip3 ns grads' dws_old
-                prev_ys   = map ((activation (act_func config)) . local_field) prev_n
-        grads'   = zipWith (*) phi_ilfs err_term
-          where phi_ilfs  = map ((derivitive . act_func) config) ilfs
-                ilfs      = map local_field ns
-                err_term  = map (sum . (zipWith (*) flgs)) (transpose plw)
+hidden_layer_errors :: (Num a) => [a] -> [[a]] -> [a]
+hidden_layer_errors pgs fwd_wss = map (sum . (zipWith (*) pgs)) fwd_wss
+
+layer_outputs :: (Num a) => ActivationFunction a -> Layer (Neuron a) -> [a]
+layer_outputs af (Layer ns) = map ((activation af) . local_field) ns 
 
 layer_weights :: Layer (Neuron a) -> [[a]] 
 layer_weights l = map weights (nodes l)
@@ -136,37 +156,15 @@ layer_weights l = map weights (nodes l)
 layer_forward_weights :: (Num a) => Layer (Neuron a) -> [[a]]
 layer_forward_weights = transpose . layer_weights
 
+layer_size :: Layer a -> Int
+layer_size (Layer xs) = length xs
 
-output_layer_step :: (Num a) => TrainingConfig a
-                             -> [[a]]                   -- last weight updates (for momentum)
-                             -> [a]                     -- desired outputs ds
-                             -> [a]                     -- nn output
-                             -> Layer (Neuron a)        -- next layer back from current
-                             -> Layer (Neuron a)        -- layer to compute
-                             -> ([Neuron a], [[a]], [a])  
-output_layer_step config dws_old ds os (Hidden prev_ns) (Output ns) = (ns', dws', grads') 
-  where ns'      = map (\(n,delta_ws)-> Neuron (zipWith (+) (weights n) (delta_ws))) zipped_ns 
-          where zipped_ns = zip ns dws'
-        dws'     = map (\(neuron, gradient, dnw_old) -> map (\(w, yi, dwij) -> (b * dwij) + (a * gradient * yi)) (zip3 (weights neuron) prev_ys dnw_old)  ) zipped_ns
-          where b         = beta config 
-                a         = alpha config
-                zipped_ns = zip3 ns grads' dws_old
-                prev_ys   = map ((activation (act_func config)) . local_field) prev_ns
-        grads'   = zipWith (*) errs phi_ilfs
-          where errs = zipWith (-) ds os
-                phi_ilfs = map ((derivitive . act_func) config) ilfs
-                ilfs     = map local_field ns
-                
+----------------------------------------------------------------
+---------------------- Back Propogation Train ------------------
+----------------------------------------------------------------
 
-       
-        
+train :: (Num a) => TrainingConfig a -> [([a], [a])] -> (NeuralNet a, WeightChange a) -> (NeuralNet a, WeightChange a)
+train c (t:ts) (nn, dws) = train c ts $ backPropogate c t dws nn 
+train c [] result = result
 
-
-
--- TODO ::  figure out how to zip or compute the layer's weight deltas
-
-
--- try a recursion approach
-          
--- I believe that I need to save the previous layer in a tuple during this fold in order to see one layer forward
 
