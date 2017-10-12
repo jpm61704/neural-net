@@ -30,7 +30,7 @@ partANet = NN [
       ]
   ]
 
-broken_test = print_net (fst (pa_backPropogate [1,1] [1])) --left off trying to figure out why i am missing a weight in output layer
+broken_test = print_net (fst (pa_backPropogate [1,1] [1])) 
     
   
 pa_backPropogate xs ds = backPropogate partAConfig (xs, ds) (WeightChange []) partANet

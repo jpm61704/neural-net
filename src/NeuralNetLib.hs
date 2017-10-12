@@ -10,6 +10,19 @@ data NeuralNet a = NN {
                       net :: [Layer (Neuron a)],
                       output :: [a] } deriving (Show)
 
+----------------------------------------------------------------
+---------------Views for NeuralNet Datatype---------------------
+----------------------------------------------------------------
+
+data NetBackView a = NetBackView (NeuralNet a) deriving (Show)
+
+netBackView :: NeuralNet a -> NetBackView a 
+netBackView (NN ls) = NetBackView $ NN $ reverse ls 
+netBackView (InducedNN ls o) = NetBackView $ InducedNN (reverse ls) o
+
+----------------------------------------------------------------
+---------------------------Layers-------------------------------
+----------------------------------------------------------------
 
 data Layer a = Layer {
                 nodes :: [a]
@@ -17,10 +30,27 @@ data Layer a = Layer {
 
 instance Functor Layer where 
   fmap f (Layer xs) = Layer (map f xs)
+  
+layer_size :: Layer a -> Int
+layer_size (Layer xs) = length xs
 
-----------------------------------------------------------------
----------------Views for NeuralNet Datatype---------------------
-----------------------------------------------------------------
+      ------------------------------------------------
+      -------------------Neuron Layers----------------
+      ------------------------------------------------
+
+
+layer_outputs :: (Num a) => ActivationFunction a -> Layer (Neuron a) -> [a]
+layer_outputs af (Layer ns) = map ((activation af) . local_field) ns 
+
+layer_weights :: Layer (Neuron a) -> [[a]] 
+layer_weights l = map weights (nodes l)
+
+-- input is forward layer
+-- output is list of forward weights for each neuron
+layer_forward_weights :: (Num a) => Layer (Neuron a) -> [[a]]
+layer_forward_weights = transpose . layer_weights
+
+
     
 ----------------------------------------------------------------
 ------------------- Forward Propogation ------------------------
@@ -145,19 +175,6 @@ layer_gradients af l errs = zipWith (*) (map phi' ilfs) errs
 hidden_layer_errors :: (Num a) => [a] -> [[a]] -> [a]
 hidden_layer_errors pgs fwd_wss = map (sum . (zipWith (*) pgs)) fwd_wss
 
-layer_outputs :: (Num a) => ActivationFunction a -> Layer (Neuron a) -> [a]
-layer_outputs af (Layer ns) = map ((activation af) . local_field) ns 
-
-layer_weights :: Layer (Neuron a) -> [[a]] 
-layer_weights l = map weights (nodes l)
-
--- input is forward layer
--- output is list of forward weights for each neuron
-layer_forward_weights :: (Num a) => Layer (Neuron a) -> [[a]]
-layer_forward_weights = transpose . layer_weights
-
-layer_size :: Layer a -> Int
-layer_size (Layer xs) = length xs
 
 ----------------------------------------------------------------
 ---------------------- Back Propogation Train ------------------
