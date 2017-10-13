@@ -15,6 +15,7 @@ main = do
   conduct_training training_data
   return ()
 
+
 conduct_training :: [([Double], [Double])] -> IO ()
 conduct_training training_data = do 
   let (nn, dws) = train partAConfig training_data (partANet, WeightChange [])
@@ -37,7 +38,7 @@ parseTrainingDataPA str = map (\(xs) -> (init xs, [last xs])) doubles
         
 parseDoubles :: [String] -> [Double]
 parseDoubles = map read
-       
+      
 
         
         

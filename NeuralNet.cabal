@@ -21,6 +21,7 @@ library
                      , NeuralNetLib
                      , PartA
                      , IOTools
+                     , Example
   build-depends:       base >= 4.7 && < 5
                      , split
   default-language:    Haskell2010

@@ -35,24 +35,5 @@ broken_test = print_net (fst (pa_backPropogate [1,1] [1]))
   
 pa_backPropogate xs ds = backPropogate partAConfig (xs, ds) (WeightChange []) partANet
 
-net1 :: NeuralNet Double 
-net1 = NN [
-    Layer [
-      Neuron [0,1],
-      Neuron [0,2]
-    ],
-    Layer [
-      Neuron [0, 1, 1]
-    ]
-  ]
 
-net1config :: TrainingConfig Double
-net1config = TrainingConfig (logisticActivation 1) (1) (0)
 
-backPropogateN1 = backPropogate net1config ([1], [1]) (WeightChange []) net1
-
-forpropN1 = induce_net (logisticActivation 1) net1 [1]
-
-l1 = case forpropN1 of 
-  (InducedNN (x:xs) _) -> x 
-  _ -> Layer []
