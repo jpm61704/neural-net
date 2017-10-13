@@ -141,7 +141,7 @@ back_propogate_hidden config@(TrainingConfig af _ _) xs (dwss_l:dwss_ls) nn (acc
           layer_grads = Layer $ layer_gradients af layer errors 
             where errors = map sum $ map (zipWith (*) (fwd_grads)) (layer_forward_weights fwd_wss)
 
--- correctedness == unknown
+-- believed correct
 backPropogate :: (Num a) => TrainingConfig a 
                          -> ([a],[a])
                          -> WeightChange a 
@@ -167,7 +167,9 @@ layer_gradients af l errs = zipWith (*) (map phi' ilfs) errs
 
 -- believed correct
 weight_change :: (Num a) => TrainingConfig a -> Layer [a] -> Layer a -> Layer a -> Layer [a]
-weight_change (TrainingConfig af a b) momentum_layer (Layer layer_gradients) (Layer bwd_ys) = Layer $ map (\g -> map (\y -> a * y * g) bwd_ys) layer_gradients
+weight_change (TrainingConfig af a b) (Layer previous_dwss) (Layer layer_gradients) (Layer bwd_ys) = Layer $ zipWith (zipWith (+)) learning momentum
+  where learning = map (\g -> map (\y -> a * y * g) bwd_ys) layer_gradients
+        momentum = map (map (b *)) previous_dwss
 
 -- correct
 layer_weight_deltas :: (Num a) => TrainingConfig a -> [[a]] -> [a] -> [a] -> [[a]]
