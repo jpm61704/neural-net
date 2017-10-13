@@ -33,9 +33,7 @@ parseTrainingDataPA str = map (\(xs) -> (init xs, [last xs])) doubles
  where l_strs = map (delete '\r') $ lines str
        l_elem_strs = map (splitOn ",") l_strs
        doubles = map (parseDoubles) l_elem_strs
-       
- 
-        
+             
 parseDoubles :: [String] -> [Double]
 parseDoubles = map read
       
