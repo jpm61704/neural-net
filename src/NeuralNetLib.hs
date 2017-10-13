@@ -110,13 +110,13 @@ back_propogate_output :: (Num a) => TrainingConfig a      -- config
                                  -> (Layer (Neuron a), Layer [a], Layer a, Layer (Neuron a))
 back_propogate_output cfg@(TrainingConfig af a b) ds momentum_layer next_layer current_layer = (updated_output_layer, weight_changes, layer_grads, current_layer)
   where updated_output_layer = update_layer_weights weight_changes current_layer 
-        weight_changes = weight_change cfg momentum_layer layer_grads (Layer (1:(layer_outputs af next_layer))) -- !! Change made here
+        weight_changes = weight_change cfg momentum_layer layer_grads (Layer (1:(layer_outputs af next_layer))) 
         layer_grads = Layer $ layer_gradients af current_layer errors
           where errors = let os = layer_outputs af current_layer in zipWith (-) ds os 
 
 
 
--- correctedness == unknown
+-- THIS FUNCTION IS CORRECT on net1 example!!!
 back_propogate_hidden :: (Num a) => TrainingConfig a          -- config                                    
                                  -> [a]                       -- input                          
                                  -> [Layer [a]]               -- previous backprop changes for (layer:net)
@@ -136,7 +136,7 @@ back_propogate_hidden config@(TrainingConfig af _ _) xs (dwss_l:dwss_ls) nn (acc
           updated_layer = update_layer_weights weight_changes layer  
           weight_changes = weight_change config dwss_l layer_grads ys
             where ys = case ls of
-                       (back:_) -> (Layer (1 : (layer_outputs af back))) -- !!! made change here 
+                       (back:_) -> (Layer (1 : (layer_outputs af back))) 
                        []       -> Layer xs
           layer_grads = Layer $ layer_gradients af layer errors 
             where errors = map sum $ map (zipWith (*) (fwd_grads)) (layer_forward_weights fwd_wss)
@@ -159,7 +159,7 @@ backPropogate config (xs, ds) (WeightChange ls) nn = (new_net, new_dws)
         new_dws = WeightChange new_layer_dws
 
 
--- believed correct
+--  correct
 layer_gradients :: (Num a) => ActivationFunction a -> Layer (Neuron a) -> [a] -> [a]
 layer_gradients af l errs = zipWith (*) (map phi' ilfs) errs
   where phi' = derivitive af 
@@ -169,15 +169,13 @@ layer_gradients af l errs = zipWith (*) (map phi' ilfs) errs
 weight_change :: (Num a) => TrainingConfig a -> Layer [a] -> Layer a -> Layer a -> Layer [a]
 weight_change (TrainingConfig af a b) momentum_layer (Layer layer_gradients) (Layer bwd_ys) = Layer $ map (\g -> map (\y -> a * y * g) bwd_ys) layer_gradients
 
--- believed correct
+-- correct
 layer_weight_deltas :: (Num a) => TrainingConfig a -> [[a]] -> [a] -> [a] -> [[a]]
 layer_weight_deltas (TrainingConfig _ a b) dwss_old gradients ys = zipWith (zipWith (+)) momentums descents
   where momentums = map (map (* b)) dwss_old
         descents  = map (\g -> map (g *) ys) (map (* a) gradients)
             
--- correctedness == unknown
-hidden_layer_errors :: (Num a) => [a] -> [[a]] -> [a]
-hidden_layer_errors pgs fwd_wss = map (sum . (zipWith (*) pgs)) fwd_wss
+
 
 
 ----------------------------------------------------------------
