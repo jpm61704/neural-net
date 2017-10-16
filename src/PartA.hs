@@ -4,6 +4,8 @@ import NeuralNetLib
 import Neuron
 import Utility
 import IOTools
+import Data.List.Split
+import Data.List
 
 partAConfig :: TrainingConfig Double
 partAConfig = TrainingConfig (logisticActivation 1) (0.7) (0.3)
@@ -30,10 +32,43 @@ partANet = NN [
       ]
   ]
 
-broken_test = print_net (fst (pa_backPropogate [1,1] [1])) 
-    
-  
-pa_backPropogate xs ds = backPropogate partAConfig (xs, ds) (WeightChange []) partANet
+load_partA_data :: IO [([Double], [Double])]
+load_partA_data = do    
+      contents <- readFile "data/cross_data.csv" 
+      return $ parseTrainingDataPA contents
+      
 
+parseTrainingDataPA :: String -> [([Double], [Double])]
+parseTrainingDataPA str = map (\(xs) -> (init xs, [last xs])) doubles 
+ where l_strs = map (delete '\r') $ lines str
+       l_elem_strs = map (splitOn ",") l_strs
+       doubles = map (parseDoubles) l_elem_strs
+       
+       parseDoubles :: [String] -> [Double]
+       parseDoubles = map read
 
+partARandom :: IO ()
+partARandom = do 
+  net <- randomWeightsAndBiases [2,10,1]
+  training_data <- load_partA_data
+  config <- setConfig 
+  conduct_training training_data (0.001) config net
+  return ()
+
+partAZero :: IO ()
+partAZero = do 
+  let net = zeroedWeightandBiases [2,10,1]
+  training_data <- load_partA_data
+  config <- setConfig 
+  conduct_training training_data (0.001) config net
+  return ()
+
+customPartA :: IO ()
+customPartA = do
+  putStrLn "Part A:"
+  training_data <- load_partA_data
+  config <- setConfig 
+  threshhold <- setThreshhold
+  conduct_training training_data threshhold config partANet
+  return ()
 
