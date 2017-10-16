@@ -147,9 +147,8 @@ backPropogate :: (Num a) => TrainingConfig a
                          -> WeightChange a 
                          -> NeuralNet a 
                          -> (NeuralNet a, WeightChange a)
-backPropogate config (xs, ds) (WeightChange ls) nn = (new_net, new_dws)
-  where (InducedNN nss o) = induce_net (act_func config) nn xs 
-        (output_layer:next_layer:reversed_hidden) = reverse nss
+backPropogate config (xs, ds) (WeightChange ls) (InducedNN nss o) = (new_net, new_dws)
+  where (output_layer:next_layer:reversed_hidden) = reverse nss
         (dw:reversed_dws) = case ls of 
                             [] -> repeat (Layer (repeat (repeat 0))) 
                             (z:zs) -> reverse ls
@@ -157,7 +156,7 @@ backPropogate config (xs, ds) (WeightChange ls) nn = (new_net, new_dws)
         (updated_layers, new_layer_dws, _, _) = back_propogate_hidden config (1:xs) reversed_dws (NN (next_layer:reversed_hidden)) ([updated_output_layer], [output_weight_changes], output_gradients, output_layer)
         new_net = NN updated_layers
         new_dws = WeightChange new_layer_dws
-
+backPropogate config t@(xs, ds) dwss nn@(NN nss) = backPropogate config t dwss $ induce_net (act_func config) nn xs 
 
 --  correct
 layer_gradients :: (Num a) => ActivationFunction a -> Layer (Neuron a) -> [a] -> [a]
@@ -184,9 +183,41 @@ layer_weight_deltas (TrainingConfig _ a b) dwss_old gradients ys = zipWith (zipW
 ---------------------- Back Propogation Train ------------------
 ----------------------------------------------------------------
 
-train :: (Num a) => TrainingConfig a -> [([a], [a])] -> (NeuralNet a, WeightChange a) -> (NeuralNet a, WeightChange a)
-train c (t:ts) (nn, dws) = train c ts $ backPropogate c t dws nn 
-train c [] result = result
+data TrainingResult = TR {
+                        avg_error_energy :: Double,
+                        result           :: (NeuralNet Double, WeightChange Double)
+                    } 
+                    | IntermittentTR {
+                        error_energies   :: [Double],
+                        result           :: (NeuralNet Double, WeightChange Double)                       
+                    } 
+
+
+
+train_epoch :: TrainingConfig Double -> [([Double], [Double])] -> (NeuralNet Double, WeightChange Double) -> TrainingResult
+train_epoch c t nn_dws = train_epoch' c t $ IntermittentTR [] nn_dws
+
+
+train_epoch' :: TrainingConfig Double -> [([Double], [Double])] -> TrainingResult -> TrainingResult
+train_epoch' c (t:ts) (IntermittentTR iees (nn, dws)) = train_epoch' c ts $ IntermittentTR iees' (backPropogate c t dws induced_net) 
+  where induced_net          = induce_net (act_func c) nn (fst t)
+        iees' = total_inst_err_enery : iees
+        total_inst_err_enery = total_instataneous_error_energy os ds 
+          where os = output induced_net
+                ds = snd t
+train_epoch' _ [] final = TR emp_risk (result final)
+  where emp_risk        = empirical_risk (error_energies final)
+
+instantaneous_error_energy :: Double -> Double
+instantaneous_error_energy e = (0.5) * (e ** 2)
+
+total_instataneous_error_energy :: [Double] -> [Double] -> Double
+total_instataneous_error_energy os ds = sum $ map instantaneous_error_energy errors 
+  where errors = zipWith (-) ds os
+
+empirical_risk :: [Double] -> Double 
+empirical_risk tiees = (1 / k) * (sum tiees)
+  where k = fromIntegral $ length tiees 
 
 -- TODO: I THINK MY ERROR IS IN THE OUTPUT LAYER COMPUTATION
 

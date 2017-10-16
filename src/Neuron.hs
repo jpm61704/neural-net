@@ -38,3 +38,4 @@ output_signal n af i = (af . (induced_local_field n)) i
 error_signal :: (Num a) => Neuron a -> (a -> a) -> [a] -> a -> a
 error_signal n af x d = d - y
     where y = output_signal n af x
+    
